@@ -111,7 +111,7 @@
       ],
       "incorrect_answer_limit": 10,
       "attachments": [],
-      "max_score": 120,
+      "max_score": 100,
       "variant_answers": true,
       "reference_solution": [],
       "mitre_techniques": [
