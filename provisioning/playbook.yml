@@ -165,12 +165,21 @@
     - name: Ensure ARP-attack and packet-mod toolset is present
       ansible.builtin.apt:
         name:
-          - ettercap-text-only
           - dsniff
           - telnet
+          - python3-scapy
+          - python3-netfilterqueue
         state: present
         update_cache: true
         cache_valid_time: 3600
+
+    - name: Deploy NFQUEUE-based payload rewriter
+      ansible.builtin.copy:
+        src: mitm-rewrite.py
+        dest: /usr/local/sbin/mitm-rewrite.py
+        owner: root
+        group: root
+        mode: '0755'
 
   roles:
     - role: user-access
