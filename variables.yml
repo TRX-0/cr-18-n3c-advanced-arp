@@ -1,0 +1,15 @@
+# APG variables. See https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/apg-variables/
+
+telnet_user:
+    type: username
+    length: 8
+
+telnet_pass:
+    type: password
+    length: 12
+    prohibited: ['{', '}', '"', "'", ' ', '\\', '/', ':', '@']
+
+flag:
+    type: password
+    length: 16
+    prohibited: ['{', '}', '"', "'", ' ', '\\', '/']

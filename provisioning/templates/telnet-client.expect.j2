@@ -1,0 +1,32 @@
+#!/usr/bin/expect -f
+# Periodic telnet client for the advanced ARP-poisoning lab.
+# Logs into vm1, executes a single read against a harmless decoy file, logs out.
+# We do not care about the output; the point is that the session is on the wire
+# for anyone in the middle to redirect.
+
+set timeout 20
+log_user 0
+
+spawn telnet {{ server_ip }}
+
+expect {
+    "login:" { send "{{ telnet_user }}\r" }
+    timeout  { exit 1 }
+}
+
+expect {
+    "Password:" { send "{{ telnet_pass }}\r" }
+    timeout     { exit 1 }
+}
+
+expect {
+    -re {\$ ?$} { send "cat /home/{{ telnet_user }}/bait.txt\r" }
+    timeout     { exit 1 }
+}
+
+expect {
+    -re {\$ ?$} { send "logout\r" }
+    timeout     { exit 1 }
+}
+
+expect eof

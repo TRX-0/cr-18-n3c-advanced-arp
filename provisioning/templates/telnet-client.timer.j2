@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic trigger for the telnet client
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec={{ poll_interval_sec }}s
+AccuracySec=1s
+Unit=telnet-client.service
+
+[Install]
+WantedBy=timers.target

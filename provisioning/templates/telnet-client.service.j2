@@ -1,0 +1,8 @@
+[Unit]
+Description=One-shot telnet client for the ARP-MITM filter lab
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/telnet-client.expect

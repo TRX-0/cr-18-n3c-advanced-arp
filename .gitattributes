@@ -1,0 +1,8 @@
+# Force LF for files the platform consumes on Linux. Defends against any
+# future Windows contributor whose git is configured with autocrlf=true.
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.json     text eol=lf
+*.sh       text eol=lf
+*.j2       text eol=lf
+*.md       text eol=lf

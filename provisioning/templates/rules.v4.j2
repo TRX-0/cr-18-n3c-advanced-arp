@@ -1,0 +1,9 @@
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+# Only vm2 may reach telnet (tcp/23). Everything else gets DROPped.
+# Other ports are unaffected so the platform's management path stays open.
+-A INPUT -p tcp --dport 23 -s {{ allowed_client_ip }} -j ACCEPT
+-A INPUT -p tcp --dport 23 -j DROP
+COMMIT
