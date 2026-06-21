@@ -20,6 +20,11 @@ expect {
 }
 
 expect {
+    -re {\$ ?$} { send "ls /home/{{ telnet_user }}/\r" }
+    timeout     { exit 1 }
+}
+
+expect {
     -re {\$ ?$} { send "cat /home/{{ telnet_user }}/bait.txt\r" }
     timeout     { exit 1 }
 }
