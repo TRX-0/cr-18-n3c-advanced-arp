@@ -47,11 +47,11 @@
         group: "{{ telnet_user }}"
         mode: '0640'
 
-    - name: Enable telnetd via inetd
+    - name: Enable telnetd via inetd (no tcpd wrapper, iptables already does the IP filter)
       ansible.builtin.lineinfile:
         path: /etc/inetd.conf
         regexp: '^#?telnet\s'
-        line: 'telnet  stream  tcp  nowait  root  /usr/sbin/tcpd  /usr/sbin/in.telnetd'
+        line: 'telnet  stream  tcp  nowait  root  /usr/sbin/in.telnetd  in.telnetd'
         create: true
         owner: root
         group: root
