@@ -71,7 +71,6 @@
         owner: root
         group: root
         mode: '0644'
-      notify: reload iptables
 
     - name: Apply iptables ruleset immediately
       ansible.builtin.command:
@@ -83,11 +82,6 @@
       ansible.builtin.systemd:
         name: inetutils-inetd
         state: restarted
-
-    - name: reload iptables
-      ansible.builtin.systemd:
-        name: netfilter-persistent
-        state: reloaded
 
 
 # ─────────────────────────────────────────────
