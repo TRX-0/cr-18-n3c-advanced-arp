@@ -51,7 +51,7 @@
       ansible.builtin.lineinfile:
         path: /etc/inetd.conf
         regexp: '^#?telnet\s'
-        line: 'telnet  stream  tcp  nowait  telnetd  /usr/sbin/tcpd /usr/sbin/in.telnetd'
+        line: 'telnet  stream  tcp  nowait  root  /usr/sbin/tcpd  /usr/sbin/in.telnetd'
         create: true
         owner: root
         group: root
