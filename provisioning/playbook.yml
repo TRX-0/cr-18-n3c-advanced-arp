@@ -1,0 +1,185 @@
+# ─────────────────────────────────────────────
+#  vm1 - telnet server with IP whitelist + flag
+# ─────────────────────────────────────────────
+- name: configure telnet server vm1
+  hosts:
+    - vm1
+  become: true
+
+  vars:
+    allowed_client_ip: 192.168.25.20
+    telnet_home: "/home/{{ telnet_user }}"
+    bait_file: "{{ telnet_home }}/bait.txt"
+    flag_file: "{{ telnet_home }}/flag.txt"
+
+  tasks:
+    - name: Install telnet server and iptables persistence
+      ansible.builtin.apt:
+        name:
+          - inetutils-inetd
+          - inetutils-telnetd
+          - iptables-persistent
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Create telnet user
+      ansible.builtin.user:
+        name: "{{ telnet_user }}"
+        password: "{{ telnet_pass | password_hash('sha512') }}"
+        shell: /bin/bash
+        create_home: true
+        home: "{{ telnet_home }}"
+
+    - name: Deploy decoy bait file (what vm2 reads by default)
+      ansible.builtin.copy:
+        dest: "{{ bait_file }}"
+        content: "Nothing to see here.\n"
+        owner: "{{ telnet_user }}"
+        group: "{{ telnet_user }}"
+        mode: '0640'
+
+    - name: Deploy the flag file (what gets read after the trainee's filter)
+      ansible.builtin.copy:
+        dest: "{{ flag_file }}"
+        content: "{{ flag }}\n"
+        owner: "{{ telnet_user }}"
+        group: "{{ telnet_user }}"
+        mode: '0640'
+
+    - name: Enable telnetd via inetd
+      ansible.builtin.lineinfile:
+        path: /etc/inetd.conf
+        regexp: '^#?telnet\s'
+        line: 'telnet  stream  tcp  nowait  telnetd  /usr/sbin/tcpd /usr/sbin/in.telnetd'
+        create: true
+        owner: root
+        group: root
+        mode: '0644'
+      notify: restart inetd
+
+    - name: Ensure inetd is started
+      ansible.builtin.systemd:
+        name: inetutils-inetd
+        enabled: true
+        state: started
+
+    - name: Deploy iptables ruleset (telnet allowed only from vm2)
+      ansible.builtin.template:
+        src: rules.v4.j2
+        dest: /etc/iptables/rules.v4
+        owner: root
+        group: root
+        mode: '0644'
+      notify: reload iptables
+
+    - name: Apply iptables ruleset immediately
+      ansible.builtin.command:
+        cmd: iptables-restore /etc/iptables/rules.v4
+      changed_when: true
+
+  handlers:
+    - name: restart inetd
+      ansible.builtin.systemd:
+        name: inetutils-inetd
+        state: restarted
+
+    - name: reload iptables
+      ansible.builtin.systemd:
+        name: netfilter-persistent
+        state: reloaded
+
+
+# ─────────────────────────────────────────────
+#  vm2 - periodic telnet client (the session source)
+# ─────────────────────────────────────────────
+- name: configure telnet client vm2
+  hosts:
+    - vm2
+  become: true
+
+  vars:
+    server_ip: 192.168.25.10
+    poll_interval_sec: 30
+
+  tasks:
+    - name: Install expect
+      ansible.builtin.apt:
+        name:
+          - expect
+          - telnet
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Deploy telnet client expect script
+      ansible.builtin.template:
+        src: telnet-client.expect.j2
+        dest: /usr/local/sbin/telnet-client.expect
+        owner: root
+        group: root
+        mode: '0750'
+      notify: restart telnet client timer
+
+    - name: Deploy telnet client service unit
+      ansible.builtin.template:
+        src: telnet-client.service.j2
+        dest: /etc/systemd/system/telnet-client.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Deploy telnet client timer unit
+      ansible.builtin.template:
+        src: telnet-client.timer.j2
+        dest: /etc/systemd/system/telnet-client.timer
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Enable and start telnet client timer
+      ansible.builtin.systemd:
+        name: telnet-client.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
+  handlers:
+    - name: restart telnet client timer
+      ansible.builtin.systemd:
+        name: telnet-client.timer
+        state: restarted
+        daemon_reload: true
+
+
+# ─────────────────────────────────────────────
+#  vma - attacker workstation
+# ─────────────────────────────────────────────
+- name: provision attacker workstation vma
+  hosts:
+    - vma
+  become: true
+
+  tasks:
+    - name: Ensure /etc/hosts resolves the renamed hostname
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^127\.0\.1\.1\b'
+        line: "127.0.1.1 {{ ansible_hostname }}"
+        state: present
+
+    - name: Ensure ARP-attack and packet-mod toolset is present
+      ansible.builtin.apt:
+        name:
+          - ettercap-text-only
+          - dsniff
+          - telnet
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+  roles:
+    - role: user-access
+      user_access_username: user
+      user_access_password: 'Password123'
+      user_access_sudo: true

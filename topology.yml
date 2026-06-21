@@ -1,0 +1,54 @@
+name: cr-18-n3c-advanced-arp
+hosts:
+  - name: vm1
+    flavor: standard.small
+    base_box:
+      image: ubuntu-noble-x86_64
+      mgmt_user: ubuntu
+      mgmt_protocol: ssh
+    hidden: false
+  - name: vm2
+    flavor: standard.small
+    base_box:
+      image: ubuntu-noble-x86_64
+      mgmt_user: ubuntu
+      mgmt_protocol: ssh
+    hidden: false
+  - name: vma
+    flavor: c1_r4_d20
+    base_box:
+      image: kali-2026.1-x86_64
+      mgmt_user: debian
+      mgmt_protocol: ssh
+    hidden: false
+routers:
+  - name: router
+    flavor: standard.small
+    base_box:
+      image: debian-12-x86_64
+      mgmt_user: debian
+      mgmt_protocol: ssh
+    hidden: false
+networks:
+  - name: lan
+    cidr: 192.168.25.0/24
+    accessible_by_user: true
+    hidden: false
+wan:
+  name: internet-connection
+  cidr: 10.10.10.0/24
+net_mappings:
+  - host: vm1
+    network: lan
+    ip: 192.168.25.10
+  - host: vm2
+    network: lan
+    ip: 192.168.25.20
+  - host: vma
+    network: lan
+    ip: 192.168.25.30
+router_mappings:
+  - router: router
+    network: lan
+    ip: 192.168.25.1
+groups: []
