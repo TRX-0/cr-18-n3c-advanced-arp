@@ -1,4 +1,34 @@
 # ─────────────────────────────────────────────
+#  all lab hosts - keep background apt out of the way
+# ─────────────────────────────────────────────
+- name: disable unattended upgrades
+  hosts:
+    - vm1
+    - vm2
+    - vma
+  become: true
+
+  tasks:
+    # Background apt runs grab the dpkg lock and can restart services mid-exercise.
+    - name: Stop and mask the apt background update units
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        masked: true
+      loop:
+        - apt-daily.timer
+        - apt-daily-upgrade.timer
+        - apt-daily.service
+        - apt-daily-upgrade.service
+
+    - name: Remove unattended-upgrades
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        state: absent
+        purge: true
+
+
+# ─────────────────────────────────────────────
 #  vm1 - telnet server with IP whitelist + flag
 # ─────────────────────────────────────────────
 - name: configure telnet server vm1
