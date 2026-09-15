@@ -1,6 +1,6 @@
 # CR-18 / Module 3 / N3c — Advanced ARP Poisoning
 
-CADMUS Cyber Range scenario. The trainee can't connect to telnet directly (iptables whitelist drops their SYN at vm1), so they have to MITM vm2's authenticated session and use an `etterfilter`-compiled script to rewrite the bytes `bait.txt` → `flag.txt` in flight. vm1 runs the modified command under vm2's session; the flag flows back across the trainee's wire.
+CADMUS Cyber Range scenario. The trainee can't connect to telnet directly (iptables whitelist drops their SYN at vm1), so they have to MITM vm2's authenticated session and rewrite the bytes `bait.txt` → `flag.txt` in flight from an NFQUEUE-backed Python script. vm1 runs the modified command under vm2's session; the flag flows back across the trainee's wire.
 
 ## Topology
 
@@ -11,11 +11,12 @@ A single `192.168.25.0/24` segment behind one router with a `10.10.10.0/24` WAN.
 | router | debian-12-x86_64       | 192.168.25.1   | LAN gateway. Not involved in the attack. |
 | vm1    | ubuntu-noble-x86_64    | 192.168.25.10  | `telnetd` via `inetd` on tcp/23. iptables whitelist allows only vm2; everything else gets DROPped. Holds `bait.txt` and `flag.txt` in the telnet user's home. |
 | vm2    | ubuntu-noble-x86_64    | 192.168.25.20  | Systemd timer fires every 30 s and runs an `expect` script that telnets to vm1, executes `cat bait.txt`, logs out. |
-| vma    | kali-2026.1-x86_64     | 192.168.25.30  | Trainee workstation. `ettercap-text-only` + `dsniff` pre-installed. |
+| vma    | kali-2026.1-x86_64     | 192.168.25.30  | Trainee workstation. `dsniff`, `python3-scapy` and `python3-netfilterqueue` pre-installed. |
 
 ## Provisioning
 
-`provisioning/playbook.yml` runs three plays:
+`provisioning/playbook.yml` runs four plays:
+- **all hosts**: masks the apt-daily timers/services and purges `unattended-upgrades`, so background package activity can't hold the dpkg lock or restart services mid-exercise.
 - **vm1**: installs `inetutils-telnetd` + `inetutils-inetd` + `iptables-persistent`, creates the telnet user (password from APG, `/bin/bash` shell so PAM accepts the login), drops the bait file and the flag file, enables telnetd in inetd, applies the iptables ruleset (only `192.168.25.20` may reach tcp/23).
 - **vm2**: installs `expect` + `telnet`, deploys an expect script that logs in to vm1 and runs `cat /home/<telnet_user>/bait.txt`, behind a systemd timer firing every 30 s.
 - **vma**: fixes the `/etc/hosts` hostname entry (sudo complains otherwise on Kali), installs `dsniff` (for arpspoof), `telnet`, `python3-scapy`, and `python3-netfilterqueue`, drops a pre-built rewriter script at `/usr/local/sbin/mitm-rewrite.py`, and provisions the trainee user `user` / `Password123` via `user-access`.

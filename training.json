@@ -8,8 +8,8 @@
   ],
   "outcomes": [
     "Bidirectional ARP MITM with IP forwarding active on a routed Linux host",
-    "Author and compile an `etterfilter` script that searches and replaces application data",
-    "Use ettercap with `-M arp:remote -F <filter>` to actively modify traffic in flight",
+    "Divert forwarded traffic into userland with an iptables NFQUEUE target",
+    "Rewrite application data in flight without breaking the TCP stream",
     "Recognise the difference between sniffing and active session modification"
   ],
   "state": "UNRELEASED",
@@ -20,7 +20,7 @@
       "order": 0,
       "estimated_duration": 0,
       "minimal_possible_solve_time": null,
-      "content": "## Scenario\n\nThree machines on a small LAN.\n\n- **vm1** at `192.168.25.10` runs `telnetd` on tcp/23. Someone hardened it with an iptables rule: only `192.168.25.20` (vm2) can connect, everyone else is dropped at the network layer.\n- **vm2** at `192.168.25.20` is a maintenance host. A script runs there every 30 seconds: it telnets to vm1, runs `cat /home/<user>/bait.txt`, then logs out. The bait file contains nothing useful.\n- **vma** at `192.168.25.30` is your attacker workstation.\n\n## What you cannot do\n\nConnect to telnet directly. Try it: `telnet 192.168.25.10`. You will hang and then time out, because vm1's iptables drops your SYN before telnet ever sees it.\n\n## What you can do\n\nSit between vm1 and vm2 and **modify** vm2's session as it flies past. Specifically, when vm2 sends `cat /home/<user>/bait.txt`, you rewrite `bait.txt` to `flag.txt` on the wire. Vm1 never knows the difference; it runs the modified command under vm2's authenticated session and returns the flag in the response. The response flows back through you, and you read the flag off the wire.\n\nThis is what `ettercap` filters are built for."
+      "content": "## Scenario\n\nThree machines on a small LAN.\n\n- **vm1** at `192.168.25.10` runs `telnetd` on tcp/23. Someone hardened it with an iptables rule: only `192.168.25.20` (vm2) can connect, everyone else is dropped at the network layer.\n- **vm2** at `192.168.25.20` is a maintenance host. A script runs there every 30 seconds: it telnets to vm1, runs `cat /home/<user>/bait.txt`, then logs out. The bait file contains nothing useful.\n- **vma** at `192.168.25.30` is your attacker workstation.\n\n## What you cannot do\n\nConnect to telnet directly. Try it: `telnet 192.168.25.10`. You will hang and then time out, because vm1's iptables drops your SYN before telnet ever sees it.\n\n## What you can do\n\nSit between vm1 and vm2 and **modify** vm2's session as it flies past. Specifically, when vm2 sends `cat /home/<user>/bait.txt`, you rewrite `bait.txt` to `flag.txt` on the wire. Vm1 never knows the difference; it runs the modified command under vm2's authenticated session and returns the flag in the response. The response flows back through you, and you read the flag off the wire.\n\nReading traffic is not enough here; you need to change it as it passes through you. The tooling for that comes later, once you are on the path."
     },
     {
       "title": "Get Access",
@@ -59,7 +59,7 @@
       ],
       "incorrect_answer_limit": 10,
       "attachments": [],
-      "max_score": 80,
+      "max_score": 100,
       "variant_answers": true,
       "reference_solution": [],
       "mitre_techniques": [
@@ -113,12 +113,12 @@
       ],
       "incorrect_answer_limit": 10,
       "attachments": [],
-      "max_score": 99,
+      "max_score": 100,
       "variant_answers": true,
       "reference_solution": [],
       "mitre_techniques": [
         {"technique_key": "TA0006.T1557.002"},
-        {"technique_key": "TA0009.T1565.002"},
+        {"technique_key": "TA0040.T1565.002"},
         {"technique_key": "TA0010.T1041"}
       ],
       "expected_commands": [
