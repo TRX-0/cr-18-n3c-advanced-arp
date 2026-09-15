@@ -15,7 +15,7 @@ hosts:
       mgmt_protocol: ssh
     hidden: false
   - name: vma
-    flavor: c1_r4_d20
+    flavor: c2_r4_d30
     base_box:
       image: kali-2026.1-x86_64
       mgmt_user: debian
