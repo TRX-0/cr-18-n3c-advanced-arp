@@ -197,6 +197,7 @@
         name:
           - dsniff
           - telnet
+          - wireshark
           - python3-scapy
           - python3-netfilterqueue
         state: present
