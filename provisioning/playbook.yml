@@ -29,6 +29,39 @@
 
 
 # ─────────────────────────────────────────────
+#  man - the sandbox management node. It is not in topology.yml; the platform
+#  adds it to the generated inventory. Every trainee SSH and GUI session is
+#  brokered through it, so an unattended upgrade firing mid-lab can stall or
+#  drop those sessions.
+# ─────────────────────────────────────────────
+- name: disable apt auto-update on the management node
+  hosts: man
+  become: true
+
+  tasks:
+    - name: Disable unattended upgrades in apt periodic config
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          APT::Periodic::Update-Package-Lists "0";
+          APT::Periodic::Unattended-Upgrade "0";
+
+    - name: Disable apt daily timers
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+        masked: true
+      loop:
+        - apt-daily.timer
+        - apt-daily-upgrade.timer
+      failed_when: false
+
+
+# ─────────────────────────────────────────────
 #  vm1 - telnet server with IP whitelist + flag
 # ─────────────────────────────────────────────
 - name: configure telnet server vm1
