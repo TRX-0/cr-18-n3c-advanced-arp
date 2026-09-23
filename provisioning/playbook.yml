@@ -61,6 +61,45 @@
         create_home: true
         home: "{{ telnet_home }}"
 
+    # The trainee recovers this account's password in the capture level, and the
+    # flag file has to stay readable by it - the rewritten `cat` runs as this
+    # user. So the account is barred from every way in except the one the
+    # exercise is about.
+    #
+    # PAM can tell the cases apart by origin: a console login arrives with no
+    # remote host and matches LOCAL, while telnetd passes vm2's address through
+    # to login, so the periodic session is unaffected.
+    - name: Deny console logins for the telnet account
+      ansible.builtin.copy:
+        content: |
+          # Console (getty) logins for {{ telnet_user }} are denied. The account
+          # exists to be logged into over telnet from vm2 and nowhere else;
+          # without this the captured password reads the flag off a console and
+          # the packet-modification level can be skipped.
+          - : {{ telnet_user }} : LOCAL
+        dest: /etc/security/access.conf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Enable pam_access for login
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/login
+        regexp: '^#?\s*account\s+required\s+pam_access\.so'
+        line: 'account  required  pam_access.so'
+        state: present
+
+    - name: Deny SSH logins for the telnet account
+      ansible.builtin.copy:
+        content: |
+          DenyUsers {{ telnet_user }}
+        dest: /etc/ssh/sshd_config.d/20-telnet-user.conf
+        owner: root
+        group: root
+        mode: '0644'
+        validate: /usr/sbin/sshd -t -f %s
+      notify: restart ssh
+
     - name: Deploy decoy bait file (what vm2 reads by default)
       ansible.builtin.copy:
         dest: "{{ bait_file }}"
@@ -108,6 +147,11 @@
       changed_when: true
 
   handlers:
+    - name: restart ssh
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
+
     - name: restart inetd
       ansible.builtin.systemd:
         name: inetutils-inetd
