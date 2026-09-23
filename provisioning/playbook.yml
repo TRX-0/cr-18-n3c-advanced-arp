@@ -72,24 +72,44 @@
     - name: Deny console logins for the telnet account
       ansible.builtin.copy:
         content: |
-          # Console (getty) logins for {{ telnet_user }} are denied. The account
-          # exists to be logged into over telnet from vm2 and nowhere else;
-          # without this the captured password reads the flag off a console and
-          # the packet-modification level can be skipped.
+          # Read only by /etc/pam.d/login, which serves both the console getty and
+          # telnetd. A console login carries no remote host and matches LOCAL;
+          # telnetd passes vm2's address through, so the periodic session is not
+          # affected. Without this the captured password reads the flag off a
+          # console and the packet-modification level can be skipped.
           - : {{ telnet_user }} : LOCAL
-        dest: /etc/security/access.conf
+        dest: /etc/security/access-login.conf
         owner: root
         group: root
         mode: '0644'
 
-    - name: Enable pam_access for login
-      ansible.builtin.lineinfile:
-        path: /etc/pam.d/login
-        regexp: '^#?\s*account\s+required\s+pam_access\.so'
-        line: 'account  required  pam_access.so'
-        state: present
-
+    # Separate file, because access.conf has no notion of which service is
+    # asking. Telnet and the console both authenticate through /etc/pam.d/login,
+    # so one shared rule cannot permit the first and refuse the second while also
+    # refusing SSH - and SSH presents a remote host just as telnet does.
     - name: Deny SSH logins for the telnet account
+      ansible.builtin.copy:
+        content: |
+          # This account has no business on SSH at all. DenyUsers below says the
+          # same thing, but sshd's keyword resolution is not dependable on this
+          # platform - the module 4 target ignored an identical DenyUsers line.
+          - : {{ telnet_user }} : ALL
+        dest: /etc/security/access-sshd.conf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Enable pam_access for login and sshd
+      ansible.builtin.lineinfile:
+        path: "/etc/pam.d/{{ item.svc }}"
+        regexp: '^#?\s*account\s+required\s+pam_access\.so'
+        line: "account  required  pam_access.so accessfile=/etc/security/access-{{ item.svc }}.conf"
+        state: present
+      loop:
+        - { svc: login }
+        - { svc: sshd }
+
+    - name: Also deny the telnet account in sshd_config
       ansible.builtin.copy:
         content: |
           DenyUsers {{ telnet_user }}
