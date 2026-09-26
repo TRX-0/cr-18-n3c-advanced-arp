@@ -47,19 +47,19 @@
         {
           "title": "Same MITM as N3b",
           "content": "If you remember the bidirectional arpspoof + sysctl ip_forward pattern from N3b, that is exactly what you need here. Telnet is plaintext like FTP — once you are on the path, the password is just sitting there in the data stream.",
-          "hint_penalty": 10,
+          "hint_penalty": 5,
           "order": 0
         },
         {
           "title": "Wireshark follow stream",
           "content": "In Wireshark, after filtering for `tcp.port == 23`, right-click any packet and choose Follow → TCP Stream. That stitches the full session back into a readable transcript including the login exchange.",
-          "hint_penalty": 15,
+          "hint_penalty": 7,
           "order": 1
         }
       ],
       "incorrect_answer_limit": 10,
       "attachments": [],
-      "max_score": 100,
+      "max_score": 50,
       "variant_answers": true,
       "reference_solution": [],
       "mitre_techniques": [
@@ -99,25 +99,25 @@
         {
           "title": "How the rewriter sees the traffic",
           "content": "The script reads packets from kernel NFQUEUE — packets are diverted there by your iptables rule on the FORWARD chain. Because the kernel forwards (you set `ip_forward=1` for the MITM), forwarded packets pass through FORWARD before going out the other side. The script reads, optionally modifies, then accepts.",
-          "hint_penalty": 10,
+          "hint_penalty": 5,
           "order": 0
         },
         {
           "title": "Same-length swap",
           "content": "The script's `OLD` and `NEW` strings have to be the same length (both `bait.txt` and `flag.txt` are 8 bytes). Different lengths would force a TCP sequence-number rewrite that breaks the session.",
-          "hint_penalty": 15,
+          "hint_penalty": 7,
           "order": 1
         },
         {
           "title": "Where the flag shows up",
           "content": "When the rewriter fires and vm1 runs the modified `cat`, the file contents flow back to vm2 across your wire. Run tcpdump in parallel to see only vm1's responses: `sudo tcpdump -ni eth1 -A 'tcp port 23 and src host 192.168.25.10'`. The flag is in vm1's response payload right after the modified command.",
-          "hint_penalty": 20,
+          "hint_penalty": 10,
           "order": 2
         }
       ],
       "incorrect_answer_limit": 10,
       "attachments": [],
-      "max_score": 100,
+      "max_score": 50,
       "variant_answers": true,
       "reference_solution": [],
       "mitre_techniques": [
